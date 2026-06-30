@@ -127,7 +127,7 @@ const loginUser = asyncHandler(async (req, res) => {
 
 const logoutUser = asyncHandler(async (req, res) => {
     try {
-        await User.findByIdAndUpdate(req.user._id, { refreshToken: null }, { new: true });
+        await User.findByIdAndUpdate(req.user._id, { refreshToken: null }, { returnDocument: "after" });
 
         const options = {
             httpOnly: true,
@@ -146,4 +146,41 @@ const logoutUser = asyncHandler(async (req, res) => {
     }
 });
 
-export { registerUser, loginUser, logoutUser };
+const refreshAccessToken = asyncHandler(async (req, res) => {
+    try {
+        const incomingRefreshToken = req.cookies.refreshToken || req.body.refreshToken;
+        if(!incomingRefreshToken) {
+            throw new ApiError(401, "Unauthorized Access as Invalid Refresh Token");
+        }
+        const decodedToken = jwt.verify(incomingRefreshToken, process.env.REFRESH_TOKEN_SECRET);
+        if(!decodedToken) {
+            throw new ApiError(401, "Unauthorized Access as refresh token does not match");
+        }
+
+        const user = await User.findById(decodedToken?._id).select("-password -refreshToken");
+        if(!user) {
+            throw new ApiError(401, "Unauthorized Access as Invalid User");
+        }
+
+        if(user.refreshToken !== incomingRefreshToken) {
+            throw new ApiError(401, "Refresh token is expired or used");
+        }
+
+        const options = {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === "production",
+            maxAge: 1000 * 60 * 60 * 24 * 30, //30 days
+        };
+
+        const { accessToken, refreshToken } = await generateAccessAndRefreshTokens(user?._id);
+        return res
+        .status(200)
+        .cookie("accessToken", accessToken, options)
+        .cookie("refreshToken", refreshToken, options)
+        .json(new ApiResponse(200, { accessToken, refreshToken }, "Access token refreshed successfully"));
+    } catch (error) {
+        throw new ApiError(500, error?.message || "Failed to refresh access token");
+    }
+});
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken };
