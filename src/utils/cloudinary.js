@@ -17,9 +17,7 @@ export const uploadOnCloudinary = async (localFilePath) => {
             overwrite: true,
             resource_type: "auto",
         });
-
-        console.log("result", result);
-
+        
         await fs.unlink(localFilePath).catch(() => {});
 
         return result;
