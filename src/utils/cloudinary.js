@@ -18,13 +18,13 @@ export const uploadOnCloudinary = async (localFilePath) => {
             resource_type: "auto",
         });
         
-        fs.unlink(localFilePath).catch(() => {});
+        await fs.unlink(localFilePath).catch(() => {});
 
         return result;
     } catch (error) {
         console.error("Cloudinary upload failed:", error);
 
-        fs.unlink(localFilePath).catch(() => {});
+        await fs.unlink(localFilePath).catch(() => {});
 
         return null;
     }

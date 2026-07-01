@@ -3,6 +3,8 @@ import { ApiError } from "../utils/ApiError.js";
 import { User } from "../models/user.model.js";
 import { uploadOnCloudinary } from "../utils/cloudinary.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
+import fs from "fs/promises";
+import jwt from "jsonwebtoken";
 
 const generateAccessAndRefreshTokens = async (userId) => {
     try {
@@ -92,7 +94,7 @@ const loginUser = asyncHandler(async (req, res) => {
     }
 
     //compare password
-    const isPasswordCorrect = await user.comparePassword(password);
+    const isPasswordCorrect = await user.isPasswordCorrect(password);
     if(!isPasswordCorrect) {
         throw new ApiError(401, "Invalid user credentials");
     }
@@ -183,4 +185,107 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     }
 });
 
-export { registerUser, loginUser, logoutUser, refreshAccessToken };
+const changeCurrentPassword = asyncHandler(async (req, res) => {
+    try {
+        const { oldPassword, newPassword } = req.body;
+
+
+        if(!oldPassword || !newPassword) {
+            throw new ApiError(400, "Old password and new password are required");
+        }
+
+        const user = await User.findById(req.user?._id).select("+password");
+        if(!user) {
+            throw new ApiError(401, "Unauthorized Access as Invalid User");
+        }
+
+        const isPasswordCorrect = await user.isPasswordCorrect(oldPassword);
+        if(!isPasswordCorrect) {
+            throw new ApiError(401, "Invalid old password");
+        }
+
+        user.password = newPassword;
+        await user.save({ validateBeforeSave: false });
+        return res.status(200).json(new ApiResponse(200, {}, "Password changed successfully"));
+    } catch (error) {
+        throw new ApiError(500, error?.message || "Failed to change password");
+    }
+});
+
+const getCurrentUser = asyncHandler(async (req, res) => {
+    return res.status(200).json(
+        new ApiResponse(
+            200,
+            req.user,
+            "User fetched successfully"
+        )
+    );
+});
+
+const updateUserAvatar = asyncHandler(async (req, res) => {
+    try {
+
+        const avatarLocalPath = req.file?.path;
+
+        if(!avatarLocalPath) {
+            throw new ApiError(400, "Avatar file is required");
+        }
+
+        const avatar = await uploadOnCloudinary(avatarLocalPath);
+        if(!avatar.secure_url) {
+            throw new ApiError(400, "Failed to upload avatar");
+        }
+
+        await fs.unlink(avatarLocalPath).catch(() => {});
+
+
+        const user = await User.findByIdAndUpdate(req.user._id,
+            {
+                $set: {
+                    avatar: avatar.secure_url,
+                },
+            },
+            { returnDocument: "after" }
+        ).select("-password -refreshToken");
+
+
+        return res.status(200).json(new ApiResponse(200, user, "Avatar updated successfully"));
+    } catch (error) {
+        throw new ApiError(500, error?.message || "Failed to update avatar");
+    }
+});
+
+const updateUserCoverImage = asyncHandler(async (req, res) => {
+    try {
+
+        const coverImageLocalPath = req.file?.path;
+
+        if(!coverImageLocalPath) {
+            throw new ApiError(400, "Cover image file is required");
+        }
+
+        const coverImage = await uploadOnCloudinary(coverImageLocalPath);
+        if(!coverImage.secure_url) {
+            throw new ApiError(400, "Failed to upload cover image");
+        }
+
+        await fs.unlink(coverImageLocalPath).catch(() => {});
+
+
+        const user = await User.findByIdAndUpdate(req.user._id,
+            {
+                $set: {
+                    coverImage: coverImage.secure_url,
+                },
+            },
+            { returnDocument: "after" }
+        ).select("-password -refreshToken");
+
+
+        return res.status(200).json(new ApiResponse(200, user, "Cover image updated successfully"));
+    } catch (error) {
+        throw new ApiError(500, error?.message || "Failed to update cover image");
+    }
+});
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateUserAvatar, updateUserCoverImage };
